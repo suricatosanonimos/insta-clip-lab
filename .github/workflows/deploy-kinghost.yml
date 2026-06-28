@@ -3,12 +3,14 @@ name: Deploy to KingHost
 on:
   push:
     branches: [ main ]
+  workflow_dispatch: # Permite rodar manualmente
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Bun
@@ -19,16 +21,35 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build
+      - name: Build project
         run: bun run build
 
-      - name: Deploy to KingHost
-        uses: appleboy/scp-action@v0.1.7
+      - name: List build output
+        run: |
+          echo "📁 Conteúdo da pasta dist:"
+          ls -la dist/ || echo "❌ Pasta dist não encontrada!"
+          echo "📁 Conteúdo da pasta build:"
+          ls -la build/ || echo "❌ Pasta build não encontrada!"
+
+      - name: Check if dist exists
+        id: check_dist
+        run: |
+          if [ -d "dist" ] && [ "$(ls -A dist)" ]; then
+            echo "✅ Pasta dist existe e não está vazia"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Pasta dist vazia ou não existe"
+            echo "exists=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Deploy to KingHost via FTP
+        if: steps.check_dist.outputs.exists == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          host: ${{ secrets.KINGHOST_HOST }}
+          server: ${{ secrets.KINGHOST_HOST }}
           username: ${{ secrets.KINGHOST_USER }}
           password: ${{ secrets.KINGHOST_PASS }}
-          port: 22
-          source: "dist/*"
-          target: "/www/"
-          strip_components: 1
+          local-dir: ./dist/
+          server-dir: /www/
+          dangerous-clean-slate: true
